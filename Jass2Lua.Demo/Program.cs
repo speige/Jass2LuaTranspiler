@@ -1,14 +1,13 @@
-﻿namespace Jass2LuaTranspiler.Demo
+﻿namespace Jass2Lua.Demo
 {
     public static class Program
     {
         public static void Main(string[] args)
         {
-            var options = new Transpiler.Options();
-
             var (jassScript, outputFilePath) = ParseInputArguments(args);
 
-            var result = Transpiler.parseScript(jassScript, options);
+            var transpiler = new Jass2LuaTranspiler();
+            var result = transpiler.Transpile(jassScript);
 
             if (string.IsNullOrEmpty(outputFilePath))
             {
@@ -46,7 +45,7 @@
                 Console.WriteLine("Usage: Jass2Lua <inputFilePath> [outputFilePath]");
                 Console.WriteLine();
                 Console.WriteLine("No options specified. Reading from standard input instead.");
-                Console.WriteLine("Please paste JASS script to convert. (Send Ctrl+Z on Windows / Ctrl+D on Unix to finish):");
+                Console.WriteLine("Please paste JASS script to convert and press enter. (Afterwards, Press Ctrl+Z on Windows / Ctrl+D on Unix and enter to run):");
 
                 var jassScript = Console.In.ReadToEnd();
                 return (jassScript, null);

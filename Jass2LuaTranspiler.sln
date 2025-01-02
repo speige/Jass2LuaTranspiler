@@ -3,9 +3,9 @@ Microsoft Visual Studio Solution File, Format Version 12.00
 # Visual Studio Version 17
 VisualStudioVersion = 17.8.34316.72
 MinimumVisualStudioVersion = 10.0.40219.1
-Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Jass2LuaTranspiler", "Jass2LuaTranspiler\Jass2LuaTranspiler.csproj", "{E95DA007-003E-4480-98A7-18C4F3C89FCD}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Jass2Lua.Demo", "Jass2Lua.Demo\Jass2Lua.Demo.csproj", "{29EB696D-CC98-44B0-92C6-7BC6DEE2FF2C}"
 EndProject
-Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Jass2Lua", "Jass2Lua\Jass2Lua.csproj", "{F9685A69-FB0D-46BC-8CA3-2954201B3E1C}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Jass2Lua", "Jass2Lua\Jass2Lua.csproj", "{F5E3FBF8-016B-4AE7-A754-2D5E6C0A6B15}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -13,14 +13,14 @@ Global
 		Release|Any CPU = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(ProjectConfigurationPlatforms) = postSolution
-		{E95DA007-003E-4480-98A7-18C4F3C89FCD}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
-		{E95DA007-003E-4480-98A7-18C4F3C89FCD}.Debug|Any CPU.Build.0 = Debug|Any CPU
-		{E95DA007-003E-4480-98A7-18C4F3C89FCD}.Release|Any CPU.ActiveCfg = Release|Any CPU
-		{E95DA007-003E-4480-98A7-18C4F3C89FCD}.Release|Any CPU.Build.0 = Release|Any CPU
-		{F9685A69-FB0D-46BC-8CA3-2954201B3E1C}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
-		{F9685A69-FB0D-46BC-8CA3-2954201B3E1C}.Debug|Any CPU.Build.0 = Debug|Any CPU
-		{F9685A69-FB0D-46BC-8CA3-2954201B3E1C}.Release|Any CPU.ActiveCfg = Release|Any CPU
-		{F9685A69-FB0D-46BC-8CA3-2954201B3E1C}.Release|Any CPU.Build.0 = Release|Any CPU
+		{29EB696D-CC98-44B0-92C6-7BC6DEE2FF2C}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{29EB696D-CC98-44B0-92C6-7BC6DEE2FF2C}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{29EB696D-CC98-44B0-92C6-7BC6DEE2FF2C}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{29EB696D-CC98-44B0-92C6-7BC6DEE2FF2C}.Release|Any CPU.Build.0 = Release|Any CPU
+		{F5E3FBF8-016B-4AE7-A754-2D5E6C0A6B15}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{F5E3FBF8-016B-4AE7-A754-2D5E6C0A6B15}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{F5E3FBF8-016B-4AE7-A754-2D5E6C0A6B15}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{F5E3FBF8-016B-4AE7-A754-2D5E6C0A6B15}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
