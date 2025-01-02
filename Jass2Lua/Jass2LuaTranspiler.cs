@@ -11,32 +11,35 @@ public partial class Jass2LuaTranspiler
         public bool AddGithubAttributionLink = true;
     }
 
-    [GeneratedRegex("•#cmt#(\\d+)")]
+    [GeneratedRegex(@"([0-9])(and|or|then)\b", RegexOptions.Compiled)]
+    protected static partial Regex InsertSpaceBetweenNumbersAndKeywordseRegex();
+
+    [GeneratedRegex(@"•#cmt#(\d+)")]
     protected static partial Regex InsertCommentRegex();
 
-    [GeneratedRegex("•#str#(\\d+)")]
+    [GeneratedRegex(@"•#str#(\d+)")]
     protected static partial Regex InsertStringRegex();
 
-    [GeneratedRegex("•#fcc#(\\d+)")]
+    [GeneratedRegex(@"•#fcc#(\d+)")]
     protected static partial Regex InsertRawcodeRegex();
 
-    [GeneratedRegex("^([A-Za-z][\\w]*)[ \t]+array[ \t]+([A-Za-z][\\w]*)(.*)", RegexOptions.Multiline)]
+    [GeneratedRegex(@"^([A-Za-z][\w]*)[ \t]+array[ \t]+([A-Za-z][\w]*)(.*)", RegexOptions.Multiline)]
     protected static partial Regex ParseVarReplaceArray1Regex();
 
-    [GeneratedRegex("^\\[[ \t]*(\\d+)[ \t]*\\]", RegexOptions.Multiline)]
+    [GeneratedRegex(@"^\[[ \t]*(\d+)[ \t]*\]", RegexOptions.Multiline)]
     protected static partial Regex ParseVarReplaceArray3Regex();
 
-    [GeneratedRegex("^([A-Za-z][\\w]*)([ \t]+)([A-Za-z][\\w]*)(.*)", RegexOptions.Multiline)]
+    [GeneratedRegex(@"^([A-Za-z][\w]*)([ \t]+)([A-Za-z][\w]*)(.*)", RegexOptions.Multiline)]
     protected static partial Regex ParseVarReplaceVar1Regex();
 
-    [GeneratedRegex("^function[ \t]*([\\$\\w]+(?:\\.[\\w\\$]+)?[ \t]*[\\)\\,])", RegexOptions.Multiline)]
+    [GeneratedRegex(@"^function[ \t]*([\$\w]+(?:\.[\w\$]+)?[ \t]*[\)\,])", RegexOptions.Multiline)]
     protected static partial Regex ParseScriptFunctionRegex();
 
-    [GeneratedRegex(@"""[ \t]*\+")]
-    protected static partial Regex DoubleQuotePlusRegex();
+    [GeneratedRegex(@"(•#str#\d+)[ \t]*\+")]
+    protected static partial Regex StringPlusRegex();
 
-    [GeneratedRegex(@"\+[ \t]*""")]
-    protected static partial Regex PlusDoubleQuoteRegex();
+    [GeneratedRegex(@"\+[ \t]*(•#str#)")]
+    protected static partial Regex PlusStringRegex();
 
     [GeneratedRegex(@"(""(?:[^""\\]|\\""|\\[\\\w])*?"")", RegexOptions.Multiline)]
     protected static partial Regex StringLiteralRegex();
@@ -86,7 +89,7 @@ public partial class Jass2LuaTranspiler
     [GeneratedRegex(@"^endloop\b", RegexOptions.Multiline)]
     protected static partial Regex EndLoopRegex();
 
-    [GeneratedRegex(@"^exitwhen\b([^\n•]*)", RegexOptions.Multiline)]
+    [GeneratedRegex(@"^exitwhen\b([^\n]*)", RegexOptions.Multiline)]
     protected static partial Regex LoopExitWhenIfRegex();
 
     [GeneratedRegex(@"^((?:[\w\$:\[\]\=]+[ \t]+)+?|[^\n]*?\bfunction[ \t]+)\btakes[ \t]+([\$\w, ]+[ \t]+)*?\breturns[ \t]+([\$\w]+)(.*?\bend)function\b", RegexOptions.Singleline | RegexOptions.Multiline)]
@@ -178,7 +181,7 @@ public partial class Jass2LuaTranspiler
 
     protected string InsertString(string str)
     {
-        _stringList.Add(str);
+        _stringList.Add(str.Replace("\n", "|n").Replace("\r", "|r"));
         return "•#str#" + (_stringList.Count - 1);
     }
 
@@ -339,7 +342,7 @@ public partial class Jass2LuaTranspiler
         foreach (var rawLine in lines)
         {
             var line = rawLine.Trim();
-            if (Regex.IsMatch(line, @"^(end|until|elseif\s+.*then|else)\b"))
+            if (Regex.IsMatch(line, @"^(end|until|elseif.*then|else)\b"))
             {
                 indentLevel = Math.Max(indentLevel - 1, 0);
             }
@@ -375,12 +378,13 @@ public partial class Jass2LuaTranspiler
         var result = jassScript;
         result = RemoveAllWhitespace(result);
 
-        result = DoubleQuotePlusRegex().Replace(result, "\"..");
-        result = PlusDoubleQuoteRegex().Replace(result, "..\"");
         result = StringLiteralRegex().Replace(result, m => InsertString(m.Groups[1].Value));
+        result = StringPlusRegex().Replace(result, "$1..");
+        result = PlusStringRegex().Replace(result, "..$1");
         result = RawcodeRegex().Replace(result, str => InsertRawcode("FourCC(" + str.Value + ")"));
         result = CommentRegex().Replace(result, m => InsertComment(m.Groups[1].Value));
 
+        result = InsertSpaceBetweenNumbersAndKeywordseRegex().Replace(result, "$1 $2");
         result = NativeFunctionRegex().Replace(result, str => InsertComment(str.Value));
         result = LuaKeywordsRegex().Replace(result, "$&_");
         result = ColonMethodRegex().Replace(result, "$2[$1]");
@@ -469,10 +473,11 @@ public partial class Jass2LuaTranspiler
 
         result = InlineFunctionRegex().Replace(result, "$1 $2");
         result = EndFunctionRegex().Replace(result, "end");
+        result = DeleteLineBreaks(result);
+        result = IndentLua(result);
         result = UnpackComment(result);
         result = UnpackString(result);
         result = UnpackRawcode(result);
-        result = DeleteLineBreaks(result);
 
         if (_options.AddStringPlusOperatorOverload)
         {
@@ -484,7 +489,6 @@ public partial class Jass2LuaTranspiler
             result = "--https://github.com/speige/Jass2LuaTranspiler\n\n" + result;
         }
 
-        result = IndentLua(result);
         return result.Replace("\n", "\r\n");
     }
 }
