@@ -92,20 +92,20 @@ jobs:
 
     - name: Setup publish folder
       run: |
-        ren Jass2LuaTranspiler\bin\Release\net8.0 v1.0.0.0
+        ren Jass2Lua\bin\Release\net8.0 v1.0.0.0
 
     - name: Setup publish folder
       run: |
-        ren Jass2Lua\bin\Release\net8.0 v1.0.0.0
+        ren Jass2Lua.Demo\bin\Release\net8.0 v1.0.0.0
 
     - name: Upload build artifacts
       uses: actions/upload-artifact@v3
       with:
-        name: dll
-        path: Jass2LuaTranspiler\bin\Release
+        name: Jass2Lua
+        path: Jass2Lua\bin\Release
 
     - name: Upload build artifacts
       uses: actions/upload-artifact@v3
       with:
-        name: CommandLineExe
-        path: Jass2LuaTranspiler.Demo\bin\Release
+        name: Jass2Lua.Demo
+        path: Jass2Lua.Demo\bin\Release

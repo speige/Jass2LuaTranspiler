@@ -7,7 +7,6 @@ public partial class Jass2LuaTranspiler
     public class Options
     {
         public bool DeleteComments = false;
-        public bool AvoidRepeatUntilLoops = false; //temporary workaround
         public bool AddStringPlusOperatorOverload = true;
         public bool AddGithubAttributionLink = true;
     }
@@ -81,23 +80,14 @@ public partial class Jass2LuaTranspiler
     [GeneratedRegex(@"\$([0-9a-fA-F]+[^\$])")]
     protected static partial Regex HexRegex();
 
-    [GeneratedRegex(@"^(loop\b((?!\bendloop\b|\bloop\b).)*\bendloop)", RegexOptions.Singleline)]
+    [GeneratedRegex(@"^loop\b", RegexOptions.Multiline)]
     protected static partial Regex LoopRegex();
 
-    [GeneratedRegex(@"^loop\s+exitwhen[ \t]*([^\n•]*)(.*end)loop", RegexOptions.Singleline)]
-    protected static partial Regex LoopExitWhenRegex();
-
-    [GeneratedRegex(@"^loop(.*)\n[ \t]*exitwhen([^\n•]*)(\s*?[ \t]*)endloop", RegexOptions.Singleline)]
-    protected static partial Regex LoopRepeatUntilRegex();
-
-    [GeneratedRegex(@"^loop\b(.*end)loop", RegexOptions.Singleline)]
-    protected static partial Regex LoopWhileTrueRegex();
+    [GeneratedRegex(@"^endloop\b", RegexOptions.Multiline)]
+    protected static partial Regex EndLoopRegex();
 
     [GeneratedRegex(@"^exitwhen\b([^\n•]*)", RegexOptions.Multiline)]
     protected static partial Regex LoopExitWhenIfRegex();
-
-    [GeneratedRegex(@"^if[ \t]*true[ \t]*then[ \t]+break[ \t]+end", RegexOptions.Multiline)]
-    protected static partial Regex LoopBreakIfTrueRegex();
 
     [GeneratedRegex(@"^((?:[\w\$:\[\]\=]+[ \t]+)+?|[^\n]*?\bfunction[ \t]+)\btakes[ \t]+([\$\w, ]+[ \t]+)*?\breturns[ \t]+([\$\w]+)(.*?\bend)function\b", RegexOptions.Singleline | RegexOptions.Multiline)]
     protected static partial Regex FunctionDeclarationRegex();
@@ -142,10 +132,10 @@ public partial class Jass2LuaTranspiler
     protected static partial Regex VarNameRegex();
 
     protected readonly Options _options;
-    protected List<string> _commentList = new();
-    protected List<string> _stringList = new();
-    protected List<string> _rawcodeList = new();
-    protected List<string> _intStack = new();
+    protected List<string> _commentList;
+    protected List<string> _stringList;
+    protected List<string> _rawcodeList;
+    protected List<string> _intStack;
 
     public Jass2LuaTranspiler(Options options = null)
     {
@@ -326,7 +316,7 @@ public partial class Jass2LuaTranspiler
 
     protected string RemoveAllWhitespace(string script)
     {
-        var lines = script.Split(new[] { "\r\n", "\n" }, StringSplitOptions.RemoveEmptyEntries);
+        var lines = script.Split(new[] { "\r\n", "\r", "\n" }, StringSplitOptions.RemoveEmptyEntries);
         var cleanedLines = new List<string>();
         foreach (var line in lines)
         {
@@ -342,7 +332,7 @@ public partial class Jass2LuaTranspiler
     protected string IndentLua(string luaScript)
     {
         luaScript = RemoveAllWhitespace(luaScript);
-        var lines = luaScript.Split(new[] { "\r\n", "\n" }, StringSplitOptions.RemoveEmptyEntries);
+        var lines = luaScript.Split(new[] { "\r\n", "\r", "\n" }, StringSplitOptions.RemoveEmptyEntries);
         var indentLevel = 0;
         var reindented = new List<string>();
 
@@ -354,7 +344,7 @@ public partial class Jass2LuaTranspiler
                 indentLevel = Math.Max(indentLevel - 1, 0);
             }
             reindented.Add(new string('\t', indentLevel) + line);
-            if (Regex.IsMatch(line, @"\b(function|then|do|repeat|else)\b(?!.*end)"))
+            if (Regex.IsMatch(line, @"\b(function|while|then|do|repeat|else)\b(?!.*end)"))
             {
                 indentLevel++;
             }
@@ -380,6 +370,7 @@ public partial class Jass2LuaTranspiler
         _commentList = new List<string>();
         _stringList = new List<string>();
         _rawcodeList = new List<string>();
+        _intStack = new List<string>();
 
         var result = jassScript;
         result = RemoveAllWhitespace(result);
@@ -410,48 +401,9 @@ public partial class Jass2LuaTranspiler
 
         result = HexRegex().Replace(result, "0x$1");
 
-        result = RepeatActionOnString(result, s =>
-        {
-            return LoopRegex().Replace(s, mm =>
-            {
-                var contents = mm.Groups[1].Value;
-                contents = LoopExitWhenRegex().Replace(contents, m =>
-                {
-                    var cond = m.Groups[1].Value;
-                    var cont = m.Groups[2].Value;
-                    var original = cond;
-                    cond = ConditionCompareRegex().Replace(cond, cc =>
-                    {
-                        var w1 = cc.Groups[1].Value;
-                        var compare = cc.Groups[2].Value;
-                        var w2 = cc.Groups[3].Value;
-                        switch (compare)
-                        {
-                            case "<": compare = ">="; break;
-                            case ">": compare = "<="; break;
-                            case "<=": compare = ">"; break;
-                            case ">=": compare = "<"; break;
-                            case "~=": compare = "=="; break;
-                            default: compare = "~="; break;
-                        }
-                        return w1 + " " + compare + " " + w2;
-                    });
-                    if (cond != original)
-                    {
-                        return "while " + cond + " do " + cont;
-                    }
-                    return "while not (" + cond + ") do " + cont;
-                });
-                if (!_options.AvoidRepeatUntilLoops)
-                {
-                    contents = LoopRepeatUntilRegex().Replace(contents, "repeat$1$3until$2");
-                }
-                contents = LoopWhileTrueRegex().Replace(contents, "while true do$1");
-                contents = LoopExitWhenIfRegex().Replace(contents, "if$1 then break end");
-                contents = LoopBreakIfTrueRegex().Replace(contents, "break");
-                return contents;
-            });
-        });
+        result = LoopRegex().Replace(result, "while true do");
+        result = LoopExitWhenIfRegex().Replace(result, "if$1 then break end");
+        result = EndLoopRegex().Replace(result, "end");
 
         result = GlobalsRegex().Replace(result, mm =>
         {
