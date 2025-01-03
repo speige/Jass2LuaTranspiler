@@ -11,6 +11,8 @@ public partial class Jass2LuaTranspiler
         public bool AddStringPlusOperatorOverload = true;
         public bool AddGithubAttributionLink = true;
         public bool PrependTranspilerWarnings = true;
+        public string Common_j_Script;
+        public string Blizzard_j_Script;
     }
 
     [GeneratedRegex(@"^\[[^]]*\]:(\d+):")]
@@ -145,9 +147,19 @@ public partial class Jass2LuaTranspiler
     protected List<string> _rawcodeList;
     protected List<string> _intStack;
 
+    protected string GetEmbeddedResource(string fileName)
+    {
+        using (var reader = new StreamReader(typeof(Jass2LuaTranspiler).Assembly.GetManifestResourceStream(fileName)))
+        {
+            return reader.ReadToEnd();
+        }
+    }
+
     public Jass2LuaTranspiler(Options options = null)
     {
         _options = options ?? new Options();
+        _options.Common_j_Script ??= GetEmbeddedResource("Jass2Lua.common.j");
+        _options.Blizzard_j_Script ??= GetEmbeddedResource("Jass2Lua.Blizzard.j");
     }
 
     protected bool IsVarInt(string varName)

@@ -9,6 +9,16 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <None Remove="Blizzard.j" />
+    <None Remove="common.j" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <EmbeddedResource Include="Blizzard.j" />
+    <EmbeddedResource Include="common.j" />
+  </ItemGroup>
+
+  <ItemGroup>
 	  <PackageReference Include="NLua" Version="[1.4.32]" />
   </ItemGroup>
 
