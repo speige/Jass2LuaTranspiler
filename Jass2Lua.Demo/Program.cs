@@ -7,7 +7,7 @@
             var (jassScript, outputFilePath) = ParseInputArguments(args);
 
             var transpiler = new Jass2LuaTranspiler();
-            var result = transpiler.Transpile(jassScript);
+            var result = transpiler.Transpile(jassScript, out var warnings);
 
             if (string.IsNullOrEmpty(outputFilePath))
             {

@@ -1,4 +1,5 @@
-﻿using System.Text.RegularExpressions;
+﻿using NLua;
+using System.Text.RegularExpressions;
 
 //extracted JS-only & removed "zinc" and "vJass" from https://raw.githubusercontent.com/BribeFromTheHive/vJass2Lua/refs/heads/main/betaconversions.html
 //NOTE: vJass is not implemented, workaround is to run JassHelper 1st to convert from vJass to standard Jass before converting to lua.
@@ -9,9 +10,13 @@ public partial class Jass2LuaTranspiler
         public bool DeleteComments = false;
         public bool AddStringPlusOperatorOverload = true;
         public bool AddGithubAttributionLink = true;
+        public bool PrependTranspilerWarnings = true;
     }
 
-    [GeneratedRegex(@"([0-9])(and|or|then)\b", RegexOptions.Compiled)]
+    [GeneratedRegex(@"^\[[^]]*\]:(\d+):")]
+    protected static partial Regex LuaErrorLineNumberRegex();
+
+    [GeneratedRegex(@"([0-9])(and|or|then)\b")]
     protected static partial Regex InsertSpaceBetweenNumbersAndKeywordseRegex();
 
     [GeneratedRegex(@"•#cmt#(\d+)")]
@@ -44,7 +49,7 @@ public partial class Jass2LuaTranspiler
     [GeneratedRegex(@"(""(?:[^""\\]|\\""|\\[\\\w])*?"")", RegexOptions.Multiline)]
     protected static partial Regex StringLiteralRegex();
 
-    [GeneratedRegex(@"'(?:[^'\\]|\\'|\\\\){4}'")]
+    [GeneratedRegex(@"('[^']*')", RegexOptions.Multiline)]
     protected static partial Regex RawcodeRegex();
 
     [GeneratedRegex(@"\/\/(.*)")]
@@ -368,8 +373,13 @@ public partial class Jass2LuaTranspiler
         return string.Join("\n", reindented);
     }
 
-    public string Transpile(string jassScript)
+    public string Transpile(string jassScript, out string warnings)
     {
+        if (!typeof(Lua).Assembly.FullName.Contains("Version=1.4.32.0"))
+        {
+            throw new Exception("Missing or wrong version of NLua dll. WC3 requires Lua 5.3 which matches NLua dll 1.4.32.0");
+        }
+
         _commentList = new List<string>();
         _stringList = new List<string>();
         _rawcodeList = new List<string>();
@@ -381,7 +391,14 @@ public partial class Jass2LuaTranspiler
         result = StringLiteralRegex().Replace(result, m => InsertString(m.Groups[1].Value));
         result = StringPlusRegex().Replace(result, "$1..");
         result = PlusStringRegex().Replace(result, "..$1");
-        result = RawcodeRegex().Replace(result, str => InsertRawcode("FourCC(" + str.Value + ")"));
+        result = RawcodeRegex().Replace(result, str => {
+            if (str.Value.Length != 6)
+            {
+                return str.Value;
+            }
+
+            return InsertRawcode("FourCC(" + str.Value + ")");
+        });
         result = CommentRegex().Replace(result, m => InsertComment(m.Groups[1].Value));
 
         result = InsertSpaceBetweenNumbersAndKeywordseRegex().Replace(result, "$1 $2");
@@ -474,6 +491,7 @@ public partial class Jass2LuaTranspiler
         result = InlineFunctionRegex().Replace(result, "$1 $2");
         result = EndFunctionRegex().Replace(result, "end");
         result = DeleteLineBreaks(result);
+
         result = IndentLua(result);
         result = UnpackComment(result);
         result = UnpackString(result);
@@ -489,6 +507,69 @@ public partial class Jass2LuaTranspiler
             result = "--https://github.com/speige/Jass2LuaTranspiler\n\n" + result;
         }
 
+        result = FixCompilerErrors(result, out warnings);
+
         return result.Replace("\n", "\r\n");
+    }
+
+    protected string FixCompilerErrors(string luaScript, out string warnings)
+    {
+        //todo: inject empty functions for blizzard.j, common.j, common.ai natives to prevent warnings
+
+        warnings = null;
+        const int MAX_ERRORS_TO_COMMENT = 50;
+        string originalScript = luaScript;
+
+        for (var i = 0; i < MAX_ERRORS_TO_COMMENT; i++)
+        {
+            using (Lua lua = new Lua())
+            {
+                try
+                {
+                    lua.DoString(luaScript);
+                    return luaScript;
+                }
+                catch (NLua.Exceptions.LuaException ex)
+                {
+                    int errorLine = ExtractErrorLine(ex);
+
+                    if (!ex.Message.Contains("'end' expected", StringComparison.InvariantCultureIgnoreCase))
+                    {
+                        warnings = ex.Message;
+
+                        if (_options.PrependTranspilerWarnings)
+                        {
+                            warnings = warnings.Replace(":" + (errorLine+1).ToString() + ":", ":" + (errorLine+3).ToString() + ":");
+                            luaScript = $"-- TRANSPILER WARNING: {warnings}\n\n{luaScript}";
+                        }
+
+                        return luaScript;
+                    }
+
+                    var lines = luaScript.Split(new[] { '\n' }, StringSplitOptions.None);
+
+                    if (errorLine < 0 || errorLine > lines.Length)
+                    {
+                        return luaScript;
+                    }
+
+                    lines[errorLine] = $"--{lines[errorLine]}";
+                    luaScript = string.Join("\n", lines);
+                }
+            }
+        }
+
+        return originalScript;
+    }
+
+    private int ExtractErrorLine(NLua.Exceptions.LuaException exception)
+    {
+        Match match = LuaErrorLineNumberRegex().Match(exception.Message);
+        if (match.Success && int.TryParse(match.Groups[1].Value, out int lineNumber))
+        {
+            return lineNumber-1;
+        }
+
+        return -1;
     }
 }
