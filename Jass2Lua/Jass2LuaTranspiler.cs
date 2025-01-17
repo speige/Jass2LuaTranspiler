@@ -28,8 +28,14 @@ namespace Jass2Lua
             public bool PrependTranspilerWarnings = true;
         }
 
+        [GeneratedRegex(@"^[ \t]*return[ \t]*$", RegexOptions.Multiline)]
+        protected static partial Regex BlankReturnRegex();
+
+        [GeneratedRegex(@"^[^[]*\[\d+:(\d+)\]")]
+        protected static partial Regex ClearScriptLuaParseJSErrorCharIndexRegex();
+
         [GeneratedRegex(@"^\[[^]]*\]:(\d+):")]
-        protected static partial Regex LuaErrorLineNumberRegex();
+        protected static partial Regex NLuaErrorLineNumberRegex();
 
         [GeneratedRegex(@"([0-9])(and|or|then)\b")]
         protected static partial Regex InsertSpaceBetweenNumbersAndKeywordseRegex();
@@ -420,14 +426,15 @@ namespace Jass2Lua
 
             result = RepeatActionOnString(result, s =>
             {
-                s = DoubleMinusRegex().Replace(s, "");
-                s = MultiPlusRegex().Replace(s, "");
+                s = DoubleMinusRegex().Replace(s, "+");
+                s = MultiPlusRegex().Replace(s, "+");
                 return s;
             });
 
             result = InsertSpaceBetweenNumbersAndKeywordseRegex().Replace(result, "$1 $2");
             result = NativeFunctionRegex().Replace(result, m => InsertComment(m.Value));
             result = LuaKeywordsRegex().Replace(result, "$&_");
+            result = BlankReturnRegex().Replace(result, "return nil");
             result = ColonMethodRegex().Replace(result, "$2[$1]");
             result = NullRegex().Replace(result, "nil");
             result = NotEqualsRegex().Replace(result, "~=");
@@ -724,6 +731,24 @@ namespace Jass2Lua
                     {
                         int errorLine = ExtractErrorLineIndex(ex); //parse and convert to 0 based due to C# arrays whereas Lua Exceptions are 1 based
 
+                        var lines = luaScript.Split(new[] { '\n' }, StringSplitOptions.None).ToList();
+
+                        if (ex.Message.Contains("unexpected symbol near '+'", StringComparison.InvariantCultureIgnoreCase))
+                        {
+                            var unaryPlus = lines[errorLine];
+                            try
+                            {
+                                var shouldThrow = LuaParser.ParseScript(unaryPlus);
+                            }
+                            catch (Microsoft.ClearScript.ScriptEngineException e)
+                            {
+                                var errorCharIndex = ExtractErrorCharIndex(e);
+                                lines[errorLine] = unaryPlus.Remove(errorCharIndex, 1);
+                                luaScript = string.Join("\n", lines);
+                                continue;
+                            }
+                        }
+
                         if (!ex.Message.Contains("'end' expected", StringComparison.InvariantCultureIgnoreCase) && !ex.Message.Contains("unexpected symbol near", StringComparison.InvariantCultureIgnoreCase))
                         {
                             warnings = ex.Message;
@@ -737,7 +762,6 @@ namespace Jass2Lua
                             return luaScript;
                         }
 
-                        var lines = luaScript.Split(new[] { '\n' }, StringSplitOptions.None).ToList();
                         var indentedLines = IndentLua(lines);
                         if (errorLine < 0 || errorLine >= indentedLines.Count)
                         {
@@ -800,9 +824,20 @@ namespace Jass2Lua
             return $"{openDelimiter}\n{luaScript}\n{closeDelimiter}";
         }
 
+        protected int ExtractErrorCharIndex(Microsoft.ClearScript.ScriptEngineException exception)
+        {
+            Match match = ClearScriptLuaParseJSErrorCharIndexRegex().Match(exception.Message);
+            if (match.Success && int.TryParse(match.Groups[1].Value, out int charIndex))
+            {
+                return charIndex;
+            }
+
+            return -1;
+        }
+
         protected int ExtractErrorLineIndex(NLua.Exceptions.LuaException exception)
         {
-            Match match = LuaErrorLineNumberRegex().Match(exception.Message);
+            Match match = NLuaErrorLineNumberRegex().Match(exception.Message);
             if (match.Success && int.TryParse(match.Groups[1].Value, out int lineNumber))
             {
                 return lineNumber - 1;

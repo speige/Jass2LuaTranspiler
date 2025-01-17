@@ -6,6 +6,12 @@ namespace Jass2Lua
 {
     public class LuaParser
     {
+        public class IndexedNode
+        {
+            public LuaASTNode Node { get; set; }
+            public int StartIndex { get; set; }
+        }
+
         public static LuaAST ParseScript(string luaScript)
         {
             using (var v8 = new V8ScriptEngine())
@@ -23,12 +29,30 @@ namespace Jass2Lua
 
         private static void AlignCommentsWithAST(LuaAST ast)
         {
-            foreach (var comment in ast.Comments)
+            var indexedNodes = new List<IndexedNode>();
+            IndexNodes(ast.Body, indexedNodes);
+
+            indexedNodes.Sort((a, b) => a.StartIndex.CompareTo(b.StartIndex));
+
+            var sortedComments = ast.Comments.OrderBy(c => c.Range[0]).ToList();
+
+            foreach (var comment in sortedComments)
             {
-                int commentStartIndex = comment.Range[0];
+                int commentStart = comment.Range[0];
                 string commentText = comment.Value;
 
-                LuaASTNode targetNode = FindClosestNodeAfter(ast.Body, commentStartIndex);
+                int nodeIndex = indexedNodes.BinarySearch(
+                    new IndexedNode { StartIndex = commentStart },
+                    Comparer<IndexedNode>.Create((a, b) => a.StartIndex.CompareTo(b.StartIndex))
+                );
+
+                if (nodeIndex < 0)
+                {
+                    //NOTE: Negative result from BinarySearch means not found and is also the bitwise negated index of where it should be inserted to keep proper sort order
+                    nodeIndex = ~nodeIndex;
+                }
+
+                LuaASTNode targetNode = nodeIndex < indexedNodes.Count ? indexedNodes[nodeIndex].Node : null;
 
                 if (targetNode != null)
                 {
@@ -41,38 +65,22 @@ namespace Jass2Lua
             }
         }
 
-        private static LuaASTNode FindClosestNodeAfter(LuaASTNode[] nodes, int index)
+        private static void IndexNodes(LuaASTNode[] nodes, List<IndexedNode> indexedNodes)
         {
             if (nodes == null)
             {
-                return null;
+                return;
             }
-
-            LuaASTNode closestNode = null;
-            int minDistance = int.MaxValue;
 
             foreach (var node in nodes)
             {
-                if (node.Range == null || node.Range.Length != 2)
+                if (node.Range != null && node.Range.Length > 0)
                 {
-                    continue;
+                    indexedNodes.Add(new IndexedNode { Node = node, StartIndex = node.Range[0] });
                 }
 
-                if (node.Range[0] > index && (node.Range[0] - index) < minDistance)
-                {
-                    minDistance = node.Range[0] - index;
-                    closestNode = node;
-                }
-
-                var childClosest = FindClosestNodeAfter(node.Body, index);
-                if (childClosest != null && (childClosest.Range[0] - index) < minDistance)
-                {
-                    minDistance = childClosest.Range[0] - index;
-                    closestNode = childClosest;
-                }
+                IndexNodes(node.Body, indexedNodes);
             }
-
-            return closestNode;
         }
 
         private static void InjectCommentBeforeNode(LuaAST ast, LuaASTNode node, string comment)
