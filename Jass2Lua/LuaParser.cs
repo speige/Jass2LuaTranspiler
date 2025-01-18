@@ -10,7 +10,6 @@ namespace Jass2Lua
             using (var v8 = new V8ScriptEngine())
             {
                 v8.Execute(EmbeddedResources.luaparse_js);
-
                 v8.Script.luaScript = luaScript;
                 v8.Execute("ast = JSON.stringify(luaparse.parse(luaScript, { luaVersion: '5.3', ranges: 'true' }));");
                 var result = LuaAST.FromJson((string)v8.Script.ast);
@@ -25,6 +24,11 @@ namespace Jass2Lua
 
         public static LuaASTNode TransformNode_Recursive(LuaASTNode node, Func<LuaASTNode, LuaASTNode> action)
         {
+            if (node == null)
+            {
+                return node;
+            }
+
             var transformed = action(node);
             if (transformed != node)
             {
@@ -170,7 +174,7 @@ namespace Jass2Lua
                     return luaAST.raw;
 
                 case LuaASTType.TableCallExpression:
-                    return $"{RenderLuaASTNode(luaAST.@base, indentationLevel)}{RenderLuaASTNode(luaAST.argument, indentationLevel)}";
+                    return $"{RenderLuaASTNode(luaAST.@base, indentationLevel)}{RenderLuaASTNode(luaAST.tableCallArgument, indentationLevel)}";
 
                 case LuaASTType.TableConstructorExpression:
                     return $"{{ {RenderLuaASTNodes(luaAST.fields, ", ", indentationLevel)} }}";

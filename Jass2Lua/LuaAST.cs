@@ -1,5 +1,7 @@
 ﻿using SpanJson;
-using System.Diagnostics;
+using SpanJson.Formatters;
+using SpanJson.Resolvers;
+using System.Runtime.CompilerServices;
 using System.Runtime.Serialization;
 
 namespace Jass2Lua
@@ -19,6 +21,7 @@ namespace Jass2Lua
         public static LuaAST FromJson(string json)
         {
             var result = JsonSerializer.Generic.Utf16.Deserialize<LuaAST>(json);
+
             var allNodes = result.body.Concat(result.comments);
             foreach (var node in allNodes)
             {
@@ -31,35 +34,6 @@ namespace Jass2Lua
 
         private static void OnDeserialized(LuaASTNode node)
         {
-            node.argument = JsonSerializer.Generic.Utf16.Deserialize<LuaASTNode>(JsonSerializer.Generic.Utf16.Serialize(node.argument_internal));
-
-            if (node.type == LuaASTType.TableCallExpression)
-            {
-                if (node.arguments_internal != null)
-                {
-                    node.argument = JsonSerializer.Generic.Utf16.Deserialize<LuaASTNode>(JsonSerializer.Generic.Utf16.Serialize(node.arguments_internal));
-                }
-            }
-            else
-            {
-                if (node.arguments_internal != null)
-                {
-                    node.arguments = JsonSerializer.Generic.Utf16.Deserialize<List<LuaASTNode>>(JsonSerializer.Generic.Utf16.Serialize(node.arguments_internal));
-                }
-            }
-
-            if (node.type == LuaASTType.TableValue || node.type == LuaASTType.TableKey || node.type == LuaASTType.TableKeyString)
-            {
-                if (node.value_internal != null)
-                {
-                    node.tableValue = JsonSerializer.Generic.Utf16.Deserialize<LuaASTNode>(JsonSerializer.Generic.Utf16.Serialize(node.value_internal));
-                }
-            }
-            else
-            {
-                node.value = (string)node.value_internal?.ToString();
-            }
-
             var children = node.AllNodes.ToList();
             if (children != null)
             {
@@ -162,6 +136,20 @@ namespace Jass2Lua
         }
     }
 
+    [JsonCustomSerializer(typeof(LuaASTNodeOrListLuaASTNodeCustomSerializer))]
+    public class LuaASTNodeOrListLuaASTNode
+    {
+        public LuaASTNode Node { get; set; }
+        public List<LuaASTNode> Nodes { get; set; }
+    }
+
+    [JsonCustomSerializer(typeof(LuaASTNodeOrStringCustomSerializer))]
+    public class LuaASTNodeOrString
+    {
+        public LuaASTNode Node { get; set; }
+        public string String { get; set; }
+    }
+
     public class LuaASTNode
     {
         public int[] range { get; set; }
@@ -169,6 +157,7 @@ namespace Jass2Lua
         public bool isLocal { get; set; }
         public LuaASTType type { get; set; }
 
+        public LuaASTNode argument { get; set; }
         public LuaASTNode @base { get; set; }
         public List<LuaASTNode> body { get; set; }
         public LuaASTNode condition { get; set; }
@@ -196,22 +185,42 @@ namespace Jass2Lua
         public string @operator { get; set; }
         public string raw { get; set; }
 
-        //ambiguous columns, used differently in JSON depending on parent Type
-        [DataMember(Name = "argument")]
-        public object argument_internal { get; set; }
         [DataMember(Name = "arguments")]
-        public object arguments_internal { get; set; }
-        [DataMember(Name = "value")]
-        public object value_internal { get; set; }
+        public LuaASTNodeOrListLuaASTNode arguments_internal { get; set; }
 
-        [IgnoreDataMember]
-        public LuaASTNode argument { get; set; }
-        [IgnoreDataMember]
-        public List<LuaASTNode> arguments { get; set; }
-        [IgnoreDataMember]
-        public string value { get; set; }
-        [IgnoreDataMember]
-        public LuaASTNode tableValue { get; set; }
+        [DataMember(Name = "value")]
+        public LuaASTNodeOrString value_internal { get; set; }
+
+        public LuaASTNode tableValue
+        {
+            get
+            {
+                return value_internal?.Node;
+            }
+        }
+        public string value
+        {
+            get
+            {
+                return value_internal.String;
+            }
+        }
+
+        public LuaASTNode tableCallArgument
+        {
+            get
+            {
+                return arguments_internal?.Node;
+            }
+        }
+
+        public List<LuaASTNode> arguments
+        {
+            get
+            {
+                return arguments_internal?.Nodes;
+            }
+        }
 
         public LuaASTNode ParentNode { get; set; }
 
@@ -222,7 +231,7 @@ namespace Jass2Lua
             {
                 argument = replacement;
             }
-            
+
             if (@base == child)
             {
                 @base = replacement;
@@ -288,9 +297,14 @@ namespace Jass2Lua
                 variable = replacement;
             }
 
-            if (tableValue == child)
+            if (value_internal?.Node == child)
             {
-                tableValue = replacement;
+                value_internal.Node = replacement;
+            }
+
+            if (arguments_internal?.Node == child)
+            {
+                arguments_internal.Node = replacement;
             }
 
             if (body != null)
@@ -311,6 +325,17 @@ namespace Jass2Lua
                     if (arguments[i] == child)
                     {
                         arguments[i] = replacement;
+                    }
+                }
+            }
+
+            if (arguments_internal?.Nodes != null)
+            {
+                for (int i = 0; i < arguments_internal.Nodes.Count; i++)
+                {
+                    if (arguments_internal.Nodes[i] == child)
+                    {
+                        arguments_internal.Nodes[i] = replacement;
                     }
                 }
             }
@@ -462,6 +487,11 @@ namespace Jass2Lua
                     yield return tableValue;
                 }
 
+                if (tableCallArgument != null)
+                {
+                    yield return tableValue;
+                }
+
                 if (body != null)
                 {
                     foreach (var child in body)
@@ -530,4 +560,100 @@ namespace Jass2Lua
     }
 
     public enum LuaASTType { AssignmentStatement, BinaryExpression, BooleanLiteral, BreakStatement, CallExpression, CallStatement, Comment, DoStatement, ElseClause, ElseifClause, ForGenericStatement, ForNumericStatement, FunctionDeclaration, GotoStatement, Identifier, IfClause, IfStatement, IndexExpression, LabelStatement, LocalStatement, LogicalExpression, MemberExpression, NilLiteral, NumericLiteral, RepeatStatement, ReturnStatement, StringCallExpression, StringLiteral, TableCallExpression, TableConstructorExpression, TableKey, TableKeyString, TableValue, UnaryExpression, VarargLiteral, WhileStatement };
+
+    public sealed class LuaASTNodeOrStringCustomSerializer : ICustomJsonFormatter<LuaASTNodeOrString>
+    {
+        public static readonly LuaASTNodeOrStringCustomSerializer Default = new LuaASTNodeOrStringCustomSerializer();
+        public object Arguments { get; set; }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private LuaASTNodeOrString DeserializeInternal<TSymbol>(ref JsonReader<char> reader) where TSymbol : struct
+        {
+            var result = new LuaASTNodeOrString();
+
+            var token = reader.ReadNextToken();
+            if (token == JsonToken.BeginObject)
+            {
+                result.Node = ComplexClassFormatter<LuaASTNode, char, IncludeNullsOriginalCaseResolver<char>>.Default.Deserialize(ref reader);
+                return result;
+            }
+            else
+            {
+                var value = reader.ReadDynamic();
+                result.String = value?.ToString();
+            }
+
+            return result;
+        }
+
+        public LuaASTNodeOrString Deserialize(ref JsonReader<byte> reader)
+        {
+            throw new NotImplementedException();
+        }
+
+        public LuaASTNodeOrString Deserialize(ref JsonReader<char> reader)
+        {
+            return DeserializeInternal<char>(ref reader);
+        }
+
+        public void Serialize(ref JsonWriter<byte> writer, LuaASTNodeOrString value)
+        {
+            throw new NotImplementedException();
+        }
+
+        public void Serialize(ref JsonWriter<char> writer, LuaASTNodeOrString value)
+        {
+            throw new NotImplementedException();
+        }
+    }
+
+    public sealed class LuaASTNodeOrListLuaASTNodeCustomSerializer : ICustomJsonFormatter<LuaASTNodeOrListLuaASTNode>
+    {
+        public static readonly LuaASTNodeOrListLuaASTNodeCustomSerializer Default = new LuaASTNodeOrListLuaASTNodeCustomSerializer();
+        public object Arguments { get; set; }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private LuaASTNodeOrListLuaASTNode DeserializeInternal<TSymbol>(ref JsonReader<char> reader) where TSymbol : struct
+        {
+            var result = new LuaASTNodeOrListLuaASTNode();
+
+            var token = reader.ReadNextToken();
+            if (token == JsonToken.BeginObject)
+            {
+                result.Node = ComplexClassFormatter<LuaASTNode, char, IncludeNullsOriginalCaseResolver<char>>.Default.Deserialize(ref reader);
+                return result;
+            }
+            else if (token == JsonToken.BeginArray)
+            {
+                var test = reader.ReadDynamic();
+                var serialized = JsonSerializer.Generic.Utf16.Serialize(test);
+                result.Nodes = JsonSerializer.Generic.Utf16.Deserialize<List<LuaASTNode>>(serialized);
+
+                //throws exception for some reason
+                //result.Nodes = ComplexClassFormatter<List<LuaASTNode>, char, IncludeNullsOriginalCaseResolver<char>>.Default.Deserialize(ref reader)?.ToList();
+            }
+
+            return result;
+        }
+
+        public LuaASTNodeOrListLuaASTNode Deserialize(ref JsonReader<byte> reader)
+        {
+            throw new NotImplementedException();
+        }
+
+        public LuaASTNodeOrListLuaASTNode Deserialize(ref JsonReader<char> reader)
+        {
+            return DeserializeInternal<char>(ref reader);
+        }
+
+        public void Serialize(ref JsonWriter<byte> writer, LuaASTNodeOrListLuaASTNode value)
+        {
+            throw new NotImplementedException();
+        }
+
+        public void Serialize(ref JsonWriter<char> writer, LuaASTNodeOrListLuaASTNode value)
+        {
+            throw new NotImplementedException();
+        }
+    }
 }

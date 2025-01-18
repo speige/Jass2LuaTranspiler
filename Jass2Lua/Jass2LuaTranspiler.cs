@@ -625,6 +625,11 @@ namespace Jass2Lua
         {
             LuaParser.TransformTree(parsed, x =>
             {
+                if (x == null)
+                {
+                    return x;
+                }
+
                 if (x.type != LuaASTType.BinaryExpression || x.@operator != "/")
                 {
                     return x;
