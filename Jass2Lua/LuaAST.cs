@@ -1,265 +1,382 @@
-﻿using Newtonsoft.Json;
-using Newtonsoft.Json.Linq;
+﻿using SpanJson;
+using System.Diagnostics;
 using System.Runtime.Serialization;
 
 namespace Jass2Lua
 {
     public class LuaAST
     {
-        public string Type { get; set; }
-        public LuaASTNode[] Body { get; set; }
-        public LuaASTNode[] Comments { get; set; }
+        public string type { get; set; }
+        public List<LuaASTNode> body { get; set; }
+        public List<LuaASTNode> comments { get; set; }
+
+        public class IndexedNode
+        {
+            public LuaASTNode Node { get; set; }
+            public int StartIndex { get; set; }
+        }
+
+        public static LuaAST FromJson(string json)
+        {
+            var result = JsonSerializer.Generic.Utf16.Deserialize<LuaAST>(json);
+            var allNodes = result.body.Concat(result.comments);
+            foreach (var node in allNodes)
+            {
+                OnDeserialized(node);
+            }
+
+            result.AlignCommentsWithAST();
+            return result;
+        }
+
+        private static void OnDeserialized(LuaASTNode node)
+        {
+            node.argument = JsonSerializer.Generic.Utf16.Deserialize<LuaASTNode>(JsonSerializer.Generic.Utf16.Serialize(node.argument_internal));
+
+            if (node.type == LuaASTType.TableCallExpression)
+            {
+                if (node.arguments_internal != null)
+                {
+                    node.argument = JsonSerializer.Generic.Utf16.Deserialize<LuaASTNode>(JsonSerializer.Generic.Utf16.Serialize(node.arguments_internal));
+                }
+            }
+            else
+            {
+                if (node.arguments_internal != null)
+                {
+                    node.arguments = JsonSerializer.Generic.Utf16.Deserialize<List<LuaASTNode>>(JsonSerializer.Generic.Utf16.Serialize(node.arguments_internal));
+                }
+            }
+
+            if (node.type == LuaASTType.TableValue || node.type == LuaASTType.TableKey || node.type == LuaASTType.TableKeyString)
+            {
+                if (node.value_internal != null)
+                {
+                    node.tableValue = JsonSerializer.Generic.Utf16.Deserialize<LuaASTNode>(JsonSerializer.Generic.Utf16.Serialize(node.value_internal));
+                }
+            }
+            else
+            {
+                node.value = (string)node.value_internal?.ToString();
+            }
+
+            var children = node.AllNodes.ToList();
+            if (children != null)
+            {
+                foreach (var child in children)
+                {
+                    if (child != null)
+                    {
+                        child.ParentNode = node;
+                        OnDeserialized(child);
+                    }
+                }
+            }
+        }
+
+        private static void IndexNodes(List<LuaASTNode> nodes, List<IndexedNode> indexedNodes)
+        {
+            if (nodes == null)
+            {
+                return;
+            }
+
+            foreach (var node in nodes)
+            {
+                if (node.range != null && node.range.Length > 0)
+                {
+                    indexedNodes.Add(new IndexedNode { Node = node, StartIndex = node.range[0] });
+                }
+
+                IndexNodes(node.body, indexedNodes);
+            }
+        }
+
+        protected void AlignCommentsWithAST()
+        {
+            if (comments == null)
+            {
+                return;
+            }
+
+            var indexedNodes = new List<IndexedNode>();
+            IndexNodes(body, indexedNodes);
+
+            indexedNodes.Sort((a, b) => a.StartIndex.CompareTo(b.StartIndex));
+
+            var sortedComments = comments.OrderBy(c => c.range[0]).ToList();
+
+            foreach (var comment in sortedComments)
+            {
+                int commentStart = comment.range[0];
+
+                int nodeIndex = indexedNodes.BinarySearch(new IndexedNode { StartIndex = commentStart }, Comparer<IndexedNode>.Create((a, b) => a.StartIndex.CompareTo(b.StartIndex)));
+
+                if (nodeIndex < 0)
+                {
+                    //NOTE: Negative result from BinarySearch means not found and is also the bitwise negated index of where it should be inserted to keep proper sort order
+                    nodeIndex = ~nodeIndex;
+                }
+
+                LuaASTNode targetNode = nodeIndex < indexedNodes.Count ? indexedNodes[nodeIndex].Node : null;
+
+                if (targetNode != null)
+                {
+                    InjectCommentBeforeNode(targetNode, comment);
+                }
+                else
+                {
+                    InjectCommentAtEnd(comment);
+                }
+            }
+        }
+
+        protected void InjectCommentBeforeNode(LuaASTNode node, LuaASTNode comment)
+        {
+            var parent = node.ParentNode;
+            if (parent != null && parent.body != null)
+            {
+                var parentIndex = parent.body.IndexOf(node);
+                if (parentIndex >= 0)
+                {
+                    parent.body.Insert(parentIndex, comment);
+                    return;
+                }
+            }
+
+            var bodyIndex = body.IndexOf(node);
+            if (bodyIndex == -1)
+            {
+                bodyIndex = 0;
+            }
+
+            if (bodyIndex >= 0)
+            {
+                body.Insert(bodyIndex, comment);
+            }
+        }
+
+        protected void InjectCommentAtEnd(LuaASTNode node)
+        {
+            body.Add(node);
+        }
     }
 
     public class LuaASTNode
     {
-        public int[] Range { get; set; }
+        public int[] range { get; set; }
 
-        public bool IsLocal { get; set; }
-        public LuaASTType Type { get; set; }
+        public bool isLocal { get; set; }
+        public LuaASTType type { get; set; }
 
-        public LuaASTNode Argument { get; set; }
-        public LuaASTNode Base { get; set; }
-        public LuaASTNode[] Body { get; set; }
-        public LuaASTNode Condition { get; set; }
-        public LuaASTNode End { get; set; }
-        public LuaASTNode Expression { get; set; }
-        public LuaASTNode Identifier { get; set; }
-        public LuaASTNode Index { get; set; }
-        public LuaASTNode Key { get; set; }
-        public LuaASTNode Left { get; set; }
-        public LuaASTNode Label { get; set; }
-        public LuaASTNode Start { get; set; }
-        public LuaASTNode Step { get; set; }
-        public LuaASTNode Right { get; set; }
-        public LuaASTNode Variable { get; set; }
+        public LuaASTNode @base { get; set; }
+        public List<LuaASTNode> body { get; set; }
+        public LuaASTNode condition { get; set; }
+        public LuaASTNode end { get; set; }
+        public LuaASTNode expression { get; set; }
+        public LuaASTNode identifier { get; set; }
+        public LuaASTNode index { get; set; }
+        public LuaASTNode key { get; set; }
+        public LuaASTNode left { get; set; }
+        public LuaASTNode label { get; set; }
+        public LuaASTNode start { get; set; }
+        public LuaASTNode step { get; set; }
+        public LuaASTNode right { get; set; }
+        public LuaASTNode variable { get; set; }
 
-        public LuaASTNode[] Clauses { get; set; }
-        public LuaASTNode[] Fields { get; set; }
-        public LuaASTNode[] Init { get; set; }
-        public LuaASTNode[] Iterators { get; set; }
-        public LuaASTNode[] Parameters { get; set; }
-        public LuaASTNode[] Variables { get; set; }
+        public List<LuaASTNode> clauses { get; set; }
+        public List<LuaASTNode> fields { get; set; }
+        public List<LuaASTNode> init { get; set; }
+        public List<LuaASTNode> iterators { get; set; }
+        public List<LuaASTNode> parameters { get; set; }
+        public List<LuaASTNode> variables { get; set; }
 
-        public string Indexer { get; set; }
-        public string Name { get; set; }
-        public string Operator { get; set; }
-        public string Raw { get; set; }
+        public string indexer { get; set; }
+        public string name { get; set; }
+        public string @operator { get; set; }
+        public string raw { get; set; }
 
         //ambiguous columns, used differently in JSON depending on parent Type
-        [JsonIgnore]
-        public LuaASTNode[] Arguments { get; set; }
-        [JsonIgnore]
-        public string Value { get; set; }
-        [JsonIgnore]
-        public LuaASTNode TableValue { get; set; }
+        [DataMember(Name = "argument")]
+        public object argument_internal { get; set; }
+        [DataMember(Name = "arguments")]
+        public object arguments_internal { get; set; }
+        [DataMember(Name = "value")]
+        public object value_internal { get; set; }
 
-        [JsonExtensionData]
-        protected IDictionary<string, JToken> _additionalData = new Dictionary<string, JToken>();
-
-        [OnDeserialized]
-        internal void OnDeserializedMethod(StreamingContext context)
-        {
-            if (Type == LuaASTType.TableCallExpression)
-            {
-                if (_additionalData.TryGetValue("arguments", out var jsonToken))
-                {
-                    Argument = jsonToken.ToObject<LuaASTNode>();
-                }
-            }
-            else
-            {
-                if (_additionalData.TryGetValue("arguments", out var jsonToken))
-                {
-                    Arguments = jsonToken.ToObject<LuaASTNode[]>();
-                }
-            }
-
-            if (Type == LuaASTType.TableValue || Type == LuaASTType.TableKey || Type == LuaASTType.TableKeyString)
-            {
-                if (_additionalData.TryGetValue("value", out var jsonToken))
-                {
-                    TableValue = jsonToken.ToObject<LuaASTNode>();
-                }
-            }
-            else
-            {
-                if (_additionalData.TryGetValue("value", out var jsonToken))
-                {
-                    Value = jsonToken.ToObject<string>();
-                }
-            }
-
-            foreach (var child in AllNodes)
-            {
-                child.ParentNode = this;
-            }
-        }
+        [IgnoreDataMember]
+        public LuaASTNode argument { get; set; }
+        [IgnoreDataMember]
+        public List<LuaASTNode> arguments { get; set; }
+        [IgnoreDataMember]
+        public string value { get; set; }
+        [IgnoreDataMember]
+        public LuaASTNode tableValue { get; set; }
 
         public LuaASTNode ParentNode { get; set; }
 
         public void ReplaceChild(LuaASTNode child, LuaASTNode replacement)
         {
             //note: could write much shorter code since this is a repeating pattern, but performance will be better this way. Important due to frequent use by recursion & filtering algorithms.
-            if (Argument == child)
+            if (argument == child)
             {
-                Argument = replacement;
+                argument = replacement;
+            }
+            
+            if (@base == child)
+            {
+                @base = replacement;
             }
 
-            if (Base == child)
+            if (condition == child)
             {
-                Base = replacement;
+                condition = replacement;
             }
 
-            if (Condition == child)
+            if (end == child)
             {
-                Condition = replacement;
+                end = replacement;
             }
 
-            if (End == child)
+            if (expression == child)
             {
-                End = replacement;
+                expression = replacement;
             }
 
-            if (Expression == child)
+            if (identifier == child)
             {
-                Expression = replacement;
+                identifier = replacement;
             }
 
-            if (Identifier == child)
+            if (index == child)
             {
-                Identifier = replacement;
+                index = replacement;
             }
 
-            if (Index == child)
+            if (key == child)
             {
-                Index = replacement;
+                key = replacement;
             }
 
-            if (Key == child)
+            if (left == child)
             {
-                Key = replacement;
+                left = replacement;
             }
 
-            if (Left == child)
+            if (label == child)
             {
-                Left = replacement;
+                label = replacement;
             }
 
-            if (Label == child)
+            if (start == child)
             {
-                Label = replacement;
+                start = replacement;
             }
 
-            if (Start == child)
+            if (step == child)
             {
-                Start = replacement;
+                step = replacement;
             }
 
-            if (Step == child)
+            if (right == child)
             {
-                Step = replacement;
+                right = replacement;
             }
 
-            if (Right == child)
+            if (variable == child)
             {
-                Right = replacement;
+                variable = replacement;
             }
 
-            if (Variable == child)
+            if (tableValue == child)
             {
-                Variable = replacement;
+                tableValue = replacement;
             }
 
-            if (TableValue == child)
+            if (body != null)
             {
-                TableValue = replacement;
-            }
-
-            if (Body != null)
-            {
-                for (int i = 0; i < Body.Length; i++)
+                for (int i = 0; i < body.Count; i++)
                 {
-                    if (Body[i] == child)
+                    if (body[i] == child)
                     {
-                        Body[i] = replacement;
+                        body[i] = replacement;
                     }
                 }
             }
 
-            if (Arguments != null)
+            if (arguments != null)
             {
-                for (int i = 0; i < Arguments.Length; i++)
+                for (int i = 0; i < arguments.Count; i++)
                 {
-                    if (Arguments[i] == child)
+                    if (arguments[i] == child)
                     {
-                        Arguments[i] = replacement;
+                        arguments[i] = replacement;
                     }
                 }
             }
 
-            if (Clauses != null)
+            if (clauses != null)
             {
-                for (int i = 0; i < Clauses.Length; i++)
+                for (int i = 0; i < clauses.Count; i++)
                 {
-                    if (Clauses[i] == child)
+                    if (clauses[i] == child)
                     {
-                        Clauses[i] = replacement;
+                        clauses[i] = replacement;
                     }
                 }
             }
 
-            if (Fields != null)
+            if (fields != null)
             {
-                for (int i = 0; i < Fields.Length; i++)
+                for (int i = 0; i < fields.Count; i++)
                 {
-                    if (Fields[i] == child)
+                    if (fields[i] == child)
                     {
-                        Fields[i] = replacement;
+                        fields[i] = replacement;
                     }
                 }
             }
 
-            if (Init != null)
+            if (init != null)
             {
-                for (int i = 0; i < Init.Length; i++)
+                for (int i = 0; i < init.Count; i++)
                 {
-                    if (Init[i] == child)
+                    if (init[i] == child)
                     {
-                        Init[i] = replacement;
+                        init[i] = replacement;
                     }
                 }
             }
 
-            if (Iterators != null)
+            if (iterators != null)
             {
-                for (int i = 0; i < Iterators.Length; i++)
+                for (int i = 0; i < iterators.Count; i++)
                 {
-                    if (Iterators[i] == child)
+                    if (iterators[i] == child)
                     {
-                        Iterators[i] = replacement;
+                        iterators[i] = replacement;
                     }
                 }
             }
 
-            if (Parameters != null)
+            if (parameters != null)
             {
-                for (int i = 0; i < Parameters.Length; i++)
+                for (int i = 0; i < parameters.Count; i++)
                 {
-                    if (Parameters[i] == child)
+                    if (parameters[i] == child)
                     {
-                        Parameters[i] = replacement;
+                        parameters[i] = replacement;
                     }
                 }
             }
 
-            if (Variables != null)
+            if (variables != null)
             {
-                for (int i = 0; i < Variables.Length; i++)
+                for (int i = 0; i < variables.Count; i++)
                 {
-                    if (Variables[i] == child)
+                    if (variables[i] == child)
                     {
-                        Variables[i] = replacement;
+                        variables[i] = replacement;
                     }
                 }
             }
@@ -270,140 +387,140 @@ namespace Jass2Lua
             get
             {
                 //note: could write much shorter code since this is a repeating pattern, but performance will be better this way. Important due to frequent use by recursion & filtering algorithms.
-                if (Argument != null)
+                if (argument != null)
                 {
-                    yield return Argument;
+                    yield return argument;
                 }
 
-                if (Base != null)
+                if (@base != null)
                 {
-                    yield return Base;
+                    yield return @base;
                 }
 
-                if (Condition != null)
+                if (condition != null)
                 {
-                    yield return Condition;
+                    yield return condition;
                 }
 
-                if (End != null)
+                if (end != null)
                 {
-                    yield return End;
+                    yield return end;
                 }
 
-                if (Expression != null)
+                if (expression != null)
                 {
-                    yield return Expression;
+                    yield return expression;
                 }
 
-                if (Identifier != null)
+                if (identifier != null)
                 {
-                    yield return Identifier;
+                    yield return identifier;
                 }
 
-                if (Index != null)
+                if (index != null)
                 {
-                    yield return Index;
+                    yield return index;
                 }
 
-                if (Key != null)
+                if (key != null)
                 {
-                    yield return Key;
+                    yield return key;
                 }
 
-                if (Left != null)
+                if (left != null)
                 {
-                    yield return Left;
+                    yield return left;
                 }
 
-                if (Label != null)
+                if (label != null)
                 {
-                    yield return Label;
+                    yield return label;
                 }
 
-                if (Start != null)
+                if (start != null)
                 {
-                    yield return Start;
+                    yield return start;
                 }
 
-                if (Step != null)
+                if (step != null)
                 {
-                    yield return Step;
+                    yield return step;
                 }
 
-                if (Right != null)
+                if (right != null)
                 {
-                    yield return Right;
+                    yield return right;
                 }
 
-                if (Variable != null)
+                if (variable != null)
                 {
-                    yield return Variable;
+                    yield return variable;
                 }
 
-                if (TableValue != null)
+                if (tableValue != null)
                 {
-                    yield return TableValue;
+                    yield return tableValue;
                 }
 
-                if (Body != null)
+                if (body != null)
                 {
-                    foreach (var child in Body)
+                    foreach (var child in body)
                     {
                         yield return child;
                     }
                 }
 
-                if (Arguments != null)
+                if (arguments != null)
                 {
-                    foreach (var child in Arguments)
+                    foreach (var child in arguments)
                     {
                         yield return child;
                     }
                 }
 
-                if (Clauses != null)
+                if (clauses != null)
                 {
-                    foreach (var child in Clauses)
+                    foreach (var child in clauses)
                     {
                         yield return child;
                     }
                 }
 
-                if (Fields != null)
+                if (fields != null)
                 {
-                    foreach (var child in Fields)
+                    foreach (var child in fields)
                     {
                         yield return child;
                     }
                 }
 
-                if (Init != null)
+                if (init != null)
                 {
-                    foreach (var child in Init)
+                    foreach (var child in init)
                     {
                         yield return child;
                     }
                 }
 
-                if (Iterators != null)
+                if (iterators != null)
                 {
-                    foreach (var child in Iterators)
+                    foreach (var child in iterators)
                     {
                         yield return child;
                     }
                 }
 
-                if (Parameters != null)
+                if (parameters != null)
                 {
-                    foreach (var child in Parameters)
+                    foreach (var child in parameters)
                     {
                         yield return child;
                     }
                 }
 
-                if (Variables != null)
+                if (variables != null)
                 {
-                    foreach (var child in Variables)
+                    foreach (var child in variables)
                     {
                         yield return child;
                     }

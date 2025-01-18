@@ -538,7 +538,7 @@ namespace Jass2Lua
             while (parentNode.ParentNode != null)
             {
                 parentNode = parentNode.ParentNode;
-                if (parentNode.Type == LuaASTType.FunctionDeclaration)
+                if (parentNode.type == LuaASTType.FunctionDeclaration)
                 {
                     return parentNode;
                 }
@@ -551,20 +551,20 @@ namespace Jass2Lua
         {
             var scope = GetScope(expression);
 
-            if (expression.Type == LuaASTType.NumericLiteral)
+            if (expression.type == LuaASTType.NumericLiteral)
             {
-                return int.TryParse(expression.Value.TrimEnd('.'), out _);
+                return int.TryParse(expression.value.TrimEnd('.'), out _);
             }
 
-            if (expression.Type == LuaASTType.Identifier)
+            if (expression.type == LuaASTType.Identifier)
             {
-                var variableType = GetVariableTypeFromScope(scope?.Identifier?.Name, expression.Name);
+                var variableType = GetVariableTypeFromScope(scope?.identifier?.name, expression.name);
                 return string.Equals(variableType, "integer", StringComparison.InvariantCultureIgnoreCase);
             }
 
-            if (expression.Type == LuaASTType.CallExpression)
+            if (expression.type == LuaASTType.CallExpression)
             {
-                var functionReturnType = GetVariableTypeFromScope(GLOBAL_SCOPE, expression.Base?.Name);
+                var functionReturnType = GetVariableTypeFromScope(GLOBAL_SCOPE, expression.@base?.name);
                 return string.Equals(functionReturnType, "integer", StringComparison.InvariantCultureIgnoreCase);
             }
 
@@ -583,20 +583,20 @@ namespace Jass2Lua
         {
             var scope = GetScope(expression);
 
-            if (expression.Type == LuaASTType.StringLiteral)
+            if (expression.type == LuaASTType.StringLiteral)
             {
                 return true;
             }
 
-            if (expression.Type == LuaASTType.Identifier)
+            if (expression.type == LuaASTType.Identifier)
             {
-                var variableType = GetVariableTypeFromScope(scope?.Identifier?.Name, expression.Name);
+                var variableType = GetVariableTypeFromScope(scope?.identifier?.name, expression.name);
                 return string.Equals(variableType, "string", StringComparison.InvariantCultureIgnoreCase);
             }
 
-            if (expression.Type == LuaASTType.CallExpression)
+            if (expression.type == LuaASTType.CallExpression)
             {
-                var functionReturnType = GetVariableTypeFromScope(GLOBAL_SCOPE, expression.Base?.Name);
+                var functionReturnType = GetVariableTypeFromScope(GLOBAL_SCOPE, expression.@base?.name);
                 return string.Equals(functionReturnType, "string", StringComparison.InvariantCultureIgnoreCase);
             }
 
@@ -625,21 +625,21 @@ namespace Jass2Lua
         {
             LuaParser.TransformTree(parsed, x =>
             {
-                if (x.Type != LuaASTType.BinaryExpression || x.Operator != "/")
+                if (x.type != LuaASTType.BinaryExpression || x.@operator != "/")
                 {
                     return x;
                 }
 
-                var leftInteger = IsIntegerExpression(x.Left);
-                var rightInteger = IsIntegerExpression(x.Right);
+                var leftInteger = IsIntegerExpression(x.left);
+                var rightInteger = IsIntegerExpression(x.right);
                 if (leftInteger && rightInteger)
                 {
                     return new LuaASTNode()
                     {
-                        Type = LuaASTType.BinaryExpression,
-                        Operator = "//",
-                        Left = x.Left,
-                        Right = x.Right,
+                        type = LuaASTType.BinaryExpression,
+                        @operator = "//",
+                        left = x.left,
+                        right = x.right,
                         ParentNode = x.ParentNode
                     };
                 }
@@ -652,21 +652,21 @@ namespace Jass2Lua
         {
             LuaParser.TransformTree(parsed, x =>
             {
-                if (x.Type != LuaASTType.BinaryExpression || x.Operator != "+")
+                if (x.type != LuaASTType.BinaryExpression || x.@operator != "+")
                 {
                     return x;
                 }
 
-                var leftString = IsStringExpression(x.Left);
-                var rightString = IsStringExpression(x.Right);
+                var leftString = IsStringExpression(x.left);
+                var rightString = IsStringExpression(x.right);
                 if (leftString || rightString)
                 {
                     return new LuaASTNode()
                     {
-                        Type = LuaASTType.BinaryExpression,
-                        Operator = "..",
-                        Left = x.Left,
-                        Right = x.Right,
+                        type = LuaASTType.BinaryExpression,
+                        @operator = "..",
+                        left = x.left,
+                        right = x.right,
                         ParentNode = x.ParentNode
                     };
                 }
