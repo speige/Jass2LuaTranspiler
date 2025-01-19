@@ -36,7 +36,7 @@ namespace Jass2Lua
                 {
                     transformed.ParentNode.ReplaceChild(node, transformed);
                 }
-                return transformed;
+                node = transformed;
             }
 
             var children = node.AllNodes.ToList();

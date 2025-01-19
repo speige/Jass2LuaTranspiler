@@ -25,27 +25,11 @@ namespace Jass2Lua
             var allNodes = result.body.Concat(result.comments);
             foreach (var node in allNodes)
             {
-                OnDeserialized(node);
+                node.SetParentNodeOfChildren();
             }
 
             result.AlignCommentsWithAST();
             return result;
-        }
-
-        private static void OnDeserialized(LuaASTNode node)
-        {
-            var children = node.AllNodes.ToList();
-            if (children != null)
-            {
-                foreach (var child in children)
-                {
-                    if (child != null)
-                    {
-                        child.ParentNode = node;
-                        OnDeserialized(child);
-                    }
-                }
-            }
         }
 
         private static void IndexNodes(List<LuaASTNode> nodes, List<IndexedNode> indexedNodes)
@@ -402,6 +386,25 @@ namespace Jass2Lua
                     if (variables[i] == child)
                     {
                         variables[i] = replacement;
+                    }
+                }
+            }
+        }
+
+        public void SetParentNodeOfChildren(bool recursive = true)
+        {
+            var children = this.AllNodes.ToList();
+            if (children != null)
+            {
+                foreach (var child in children)
+                {
+                    if (child != null)
+                    {
+                        child.ParentNode = this;
+                        if (recursive)
+                        {
+                            child.SetParentNodeOfChildren();
+                        }
                     }
                 }
             }

@@ -639,7 +639,7 @@ namespace Jass2Lua
                 var rightInteger = IsIntegerExpression(x.right);
                 if (leftInteger && rightInteger)
                 {
-                    return new LuaASTNode()
+                    var result = new LuaASTNode()
                     {
                         type = LuaASTType.BinaryExpression,
                         @operator = "//",
@@ -647,6 +647,8 @@ namespace Jass2Lua
                         right = x.right,
                         ParentNode = x.ParentNode
                     };
+                    result.SetParentNodeOfChildren(false);
+                    return result;
                 }
 
                 return x;
@@ -666,7 +668,7 @@ namespace Jass2Lua
                 var rightString = IsStringExpression(x.right);
                 if (leftString || rightString)
                 {
-                    return new LuaASTNode()
+                    var result = new LuaASTNode()
                     {
                         type = LuaASTType.BinaryExpression,
                         @operator = "..",
@@ -674,6 +676,8 @@ namespace Jass2Lua
                         right = x.right,
                         ParentNode = x.ParentNode
                     };
+                    result.SetParentNodeOfChildren(false);
+                    return result;
                 }
 
                 return x;
