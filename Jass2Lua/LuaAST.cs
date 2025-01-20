@@ -134,8 +134,21 @@ namespace Jass2Lua
         public string String { get; set; }
     }
 
+    public class LuaASTNodeTextSpan
+    {
+        public LuaASTNodeTextPosition start { get; set; }
+        public LuaASTNodeTextPosition end { get; set; }
+    }
+
+    public class LuaASTNodeTextPosition
+    {
+        public int line { get; set; }
+        public int column { get; set; }
+    }
+
     public class LuaASTNode
     {
+        public LuaASTNodeTextSpan loc { get; set; }
         public int[] range { get; set; }
 
         public bool isLocal { get; set; }

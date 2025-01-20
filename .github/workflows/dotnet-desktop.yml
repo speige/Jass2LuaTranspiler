@@ -92,11 +92,11 @@ jobs:
 
     - name: Setup publish folder
       run: |
-        ren Jass2Lua\bin\Release\net8.0 v1.0.0.0
+        ren Jass2Lua\bin\Release\net8.0 v1.0.1.0
 
     - name: Setup publish folder
       run: |
-        ren Jass2Lua.Demo\bin\Release\net8.0 v1.0.0.0
+        ren Jass2Lua.Demo\bin\Release\net8.0 v1.0.1.0
 
     - name: Upload build artifacts
       uses: actions/upload-artifact@v3

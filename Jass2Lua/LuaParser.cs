@@ -11,7 +11,7 @@ namespace Jass2Lua
             {
                 v8.Execute(EmbeddedResources.luaparse_js);
                 v8.Script.luaScript = luaScript;
-                v8.Execute("ast = JSON.stringify(luaparse.parse(luaScript, { luaVersion: '5.3', ranges: 'true' }));");
+                v8.Execute("ast = JSON.stringify(luaparse.parse(luaScript, { luaVersion: '5.3', locations: true, ranges: true }));");
                 var result = LuaAST.FromJson((string)v8.Script.ast);
                 return result;
             }
