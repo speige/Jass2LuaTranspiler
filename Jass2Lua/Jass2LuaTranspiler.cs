@@ -1,10 +1,13 @@
 ﻿using System.Text.RegularExpressions;
+using Jass2Lua.Ast;
 using NLua;
+using SourcemapToolkit.SourcemapParser;
 
 namespace Jass2Lua
 {
     public partial class Jass2LuaTranspiler
     {
+        protected const string SOURCE_MAP_LINE_COMMENT_PREFIX = "Jass2LuaTranspiler_SOURCE_MAP_LINE_INDEX:";
         protected static JassVariableType NativeGlobalScope;
         static Jass2LuaTranspiler()
         {
@@ -23,7 +26,6 @@ namespace Jass2Lua
         public class Options
         {
             public bool DeleteComments = false;
-            public bool AddHelperFunctions = true;
             public bool AddGithubAttributionLink = true;
             public bool PrependTranspilerWarnings = true;
         }
@@ -234,7 +236,8 @@ namespace Jass2Lua
             {
                 return "";
             }
-            _commentList.Add($"--{str}");
+
+            _commentList.Add($"{str}");
             return "•#cmt#" + (_commentList.Count - 1) + "•";
         }
 
@@ -250,16 +253,17 @@ namespace Jass2Lua
             return "•#fcc#" + (_rawcodeList.Count - 1) + "•";
         }
 
-        protected string UnpackComment(string str)
+        protected string UnpackComments(string str)
         {
-            if (_commentList.Count > 0)
-            {
-                return InsertCommentRegex().Replace(str, m => _commentList[int.Parse(m.Groups[1].Value)]);
-            }
-            return str;
+            return RepeatActionOnString(str, s => {
+                return InsertCommentRegex().Replace(s, m =>
+                {
+                    return "--" + _commentList[int.Parse(m.Groups[1].Value)];
+                });
+            });
         }
 
-        protected string UnpackString(string str)
+        protected string UnpackStrings(string str)
         {
             if (_stringList.Count > 0)
             {
@@ -268,7 +272,7 @@ namespace Jass2Lua
             return str;
         }
 
-        protected string UnpackRawcode(string str)
+        protected string UnpackRawcodes(string str)
         {
             if (_rawcodeList.Count > 0)
             {
@@ -371,7 +375,59 @@ namespace Jass2Lua
             return string.Join("\n", cleanedLines);
         }
 
-        public string Transpile(string jassScript, out string warnings)
+        protected string AddSourceMapComments(string jassScript)
+        {
+            const string prefix = "//" + SOURCE_MAP_LINE_COMMENT_PREFIX;
+            var lines = jassScript.Split(new[] { "\r\n", "\r", "\n" }, StringSplitOptions.None).ToList();
+            var count = lines.Count;
+            for (var i = count-1; i > 0; i--)
+            {
+                lines.Insert(i, prefix + i);
+            }
+            return string.Join("\n", lines);
+        }
+
+        protected string RemoveSourceMapComments(string transpiledLuaScript, out string sourceMap)
+        {
+            const string prefix = "--" + SOURCE_MAP_LINE_COMMENT_PREFIX;
+
+            var lines = transpiledLuaScript.Split(new[] { "\r\n", "\r", "\n" }, StringSplitOptions.None);
+            var withoutComment = new List<string>();
+            var mappings = new List<MappingEntry>();
+            var removedLineCount = 0;
+
+            for (var lineIdx = 0; lineIdx < lines.Length; lineIdx++)
+            {
+                var line = lines[lineIdx];
+                
+                var commentIdx = line.IndexOf(prefix);
+                if (commentIdx != -1)
+                {
+                    if (int.TryParse(line.Substring(commentIdx + prefix.Length), out var originalLineNumber))
+                    {
+                        var mappingEntry = new MappingEntry
+                        {
+                            GeneratedSourcePosition = new SourcePosition() { ZeroBasedLineNumber = lineIdx - removedLineCount },
+                            OriginalSourcePosition = new SourcePosition() { ZeroBasedLineNumber = originalLineNumber },
+                            OriginalFileName = "original.j"
+                        };
+                        mappings.Add(mappingEntry);
+                        removedLineCount++;
+                    }
+                }
+                else
+                {
+                    withoutComment.Add(line);
+                }
+            }
+
+            var _sourceMapGenerator = new SourceMapGenerator();
+            sourceMap = _sourceMapGenerator.SerializeMapping(new SourceMap() { ParsedMappings = mappings, Version = 3, File = "transpiled.lua", Sources = new List<string>() { "original.j" } });
+
+            return string.Join("\r\n", withoutComment);
+        }
+
+        public string Transpile(string jassScript, out string warnings, out string sourceMap)
         {
             if (!typeof(Lua).Assembly.FullName.Contains("Version=1.4.32.0"))
             {
@@ -382,7 +438,7 @@ namespace Jass2Lua
             _stringList = new List<string>();
             _rawcodeList = new List<string>();
 
-            var result = jassScript;
+            var result = AddSourceMapComments(jassScript);
 
             result = StringOrRawCodeOrCommentRegex().Replace(result, m => {
                 if (m.Groups["String"].Success)
@@ -396,7 +452,7 @@ namespace Jass2Lua
                     {
                         comment = comment.Substring(2);
                     }
-                    return "\n" + InsertComment(comment) + "\n";
+                    return InsertComment(comment);
                 }
                 else if (m.Groups["Rawcode"].Success)
                 {
@@ -510,14 +566,9 @@ namespace Jass2Lua
             result = EndFunctionRegex().Replace(result, "end");
             result = DeleteLineBreaks(result);
 
-            result = UnpackComment(result);
-            result = UnpackString(result);
-            result = UnpackRawcode(result);
-
-            if (_options.AddHelperFunctions && !string.IsNullOrWhiteSpace(EmbeddedResources.helperFunctions_lua))
-            {
-                result = EmbeddedResources.helperFunctions_lua + "\n\n" + result;
-            }
+            result = UnpackComments(result);
+            result = UnpackStrings(result);
+            result = UnpackRawcodes(result);
 
             if (_options.AddGithubAttributionLink)
             {
@@ -528,7 +579,7 @@ namespace Jass2Lua
 
             result = FixJassSideEffects(result);
 
-            return result.Replace("\n", "\r\n");
+            return RemoveSourceMapComments(result, out sourceMap);
         }
 
         protected LuaASTNode GetScope(LuaASTNode node)
@@ -618,12 +669,12 @@ namespace Jass2Lua
             FixIntegerDivision(parsed);
             FixStringConcatenation(parsed);
 
-            return LuaParser.RenderLuaAST(parsed);
+            return LuaRenderer.Render(parsed);
         }
 
         protected void FixIntegerDivision(LuaAST parsed)
         {
-            LuaParser.TransformTree(parsed, x =>
+            parsed.TransformTree(x =>
             {
                 if (x == null)
                 {
@@ -657,7 +708,7 @@ namespace Jass2Lua
 
         protected void FixStringConcatenation(LuaAST parsed)
         {
-            LuaParser.TransformTree(parsed, x =>
+            parsed.TransformTree(x =>
             {
                 if (x.type != LuaASTType.BinaryExpression || x.@operator != "+")
                 {

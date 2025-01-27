@@ -11,16 +11,13 @@
   <ItemGroup>
     <None Remove="EmbeddedResources\Blizzard.j" />
     <None Remove="EmbeddedResources\common.j" />
-    <None Remove="EmbeddedResources\helperFunctions.lua" />
     <None Remove="EmbeddedResources\luaparse.js" />
-    <None Remove="helperFunctions.lua" />
     <None Remove="luaparse.js" />
   </ItemGroup>
 
   <ItemGroup>
     <EmbeddedResource Include="EmbeddedResources\Blizzard.j" />
     <EmbeddedResource Include="EmbeddedResources\common.j" />
-    <EmbeddedResource Include="EmbeddedResources\helperFunctions.lua" />
     <EmbeddedResource Include="EmbeddedResources\luaparse.js" />
   </ItemGroup>
 
@@ -36,6 +33,7 @@
 	  <PackageReference Include="Microsoft.ClearScript.V8.Native.win-x64" Version="7.4.5" />
 	  <PackageReference Include="Microsoft.ClearScript.V8.Native.win-x86" Version="7.4.5" />
 	  <PackageReference Include="NLua" Version="[1.4.32]" />
+	  <PackageReference Include="SourceMapToolkit" Version="1.1.4" />
 	  <PackageReference Include="SpanJson" Version="4.2.1" />
   </ItemGroup>
 

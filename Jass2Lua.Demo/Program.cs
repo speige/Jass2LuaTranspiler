@@ -1,5 +1,4 @@
-﻿using System.Diagnostics;
-using System.Text;
+﻿using System.Text;
 
 namespace Jass2Lua.Demo
 {
@@ -11,7 +10,7 @@ namespace Jass2Lua.Demo
             var (jassScript, outputFilePath) = ParseInputArguments(args);
 
             var transpiler = new Jass2LuaTranspiler();
-            var result = transpiler.Transpile(jassScript, out var warnings);
+            var result = transpiler.Transpile(jassScript, out var warnings, out var sourceMap);
 
             if (string.IsNullOrEmpty(outputFilePath))
             {
@@ -21,6 +20,7 @@ namespace Jass2Lua.Demo
             else
             {
                 File.WriteAllText(outputFilePath, result, Encoding.GetEncoding("ISO-8859-1"));
+                File.WriteAllText(outputFilePath + ".map", sourceMap, Encoding.GetEncoding("ISO-8859-1"));
                 Console.WriteLine($"Output saved to '{outputFilePath}'");
             }
         }

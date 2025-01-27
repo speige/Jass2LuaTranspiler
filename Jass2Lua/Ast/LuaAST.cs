@@ -4,19 +4,13 @@ using SpanJson.Resolvers;
 using System.Runtime.CompilerServices;
 using System.Runtime.Serialization;
 
-namespace Jass2Lua
+namespace Jass2Lua.Ast
 {
     public class LuaAST
     {
         public string type { get; set; }
         public List<LuaASTNode> body { get; set; }
         public List<LuaASTNode> comments { get; set; }
-
-        public class IndexedNode
-        {
-            public LuaASTNode Node { get; set; }
-            public int StartIndex { get; set; }
-        }
 
         public static LuaAST FromJson(string json)
         {
@@ -28,95 +22,7 @@ namespace Jass2Lua
                 node.SetParentNodeOfChildren();
             }
 
-            result.AlignCommentsWithAST();
             return result;
-        }
-
-        private static void IndexNodes(List<LuaASTNode> nodes, List<IndexedNode> indexedNodes)
-        {
-            if (nodes == null)
-            {
-                return;
-            }
-
-            foreach (var node in nodes)
-            {
-                if (node.range != null && node.range.Length > 0)
-                {
-                    indexedNodes.Add(new IndexedNode { Node = node, StartIndex = node.range[0] });
-                }
-
-                IndexNodes(node.body, indexedNodes);
-            }
-        }
-
-        protected void AlignCommentsWithAST()
-        {
-            if (comments == null)
-            {
-                return;
-            }
-
-            var indexedNodes = new List<IndexedNode>();
-            IndexNodes(body, indexedNodes);
-
-            indexedNodes.Sort((a, b) => a.StartIndex.CompareTo(b.StartIndex));
-
-            var sortedComments = comments.OrderBy(c => c.range[0]).ToList();
-
-            foreach (var comment in sortedComments)
-            {
-                int commentStart = comment.range[0];
-
-                int nodeIndex = indexedNodes.BinarySearch(new IndexedNode { StartIndex = commentStart }, Comparer<IndexedNode>.Create((a, b) => a.StartIndex.CompareTo(b.StartIndex)));
-
-                if (nodeIndex < 0)
-                {
-                    //NOTE: Negative result from BinarySearch means not found and is also the bitwise negated index of where it should be inserted to keep proper sort order
-                    nodeIndex = ~nodeIndex;
-                }
-
-                LuaASTNode targetNode = nodeIndex < indexedNodes.Count ? indexedNodes[nodeIndex].Node : null;
-
-                if (targetNode != null)
-                {
-                    InjectCommentBeforeNode(targetNode, comment);
-                }
-                else
-                {
-                    InjectCommentAtEnd(comment);
-                }
-            }
-        }
-
-        protected void InjectCommentBeforeNode(LuaASTNode node, LuaASTNode comment)
-        {
-            var parent = node.ParentNode;
-            if (parent != null && parent.body != null)
-            {
-                var parentIndex = parent.body.IndexOf(node);
-                if (parentIndex >= 0)
-                {
-                    parent.body.Insert(parentIndex, comment);
-                    return;
-                }
-            }
-
-            var bodyIndex = body.IndexOf(node);
-            if (bodyIndex == -1)
-            {
-                bodyIndex = 0;
-            }
-
-            if (bodyIndex >= 0)
-            {
-                body.Insert(bodyIndex, comment);
-            }
-        }
-
-        protected void InjectCommentAtEnd(LuaASTNode node)
-        {
-            body.Add(node);
         }
     }
 
@@ -406,7 +312,7 @@ namespace Jass2Lua
 
         public void SetParentNodeOfChildren(bool recursive = true)
         {
-            var children = this.AllNodes.ToList();
+            var children = AllNodes.ToList();
             if (children != null)
             {
                 foreach (var child in children)
@@ -583,7 +489,7 @@ namespace Jass2Lua
         public object Arguments { get; set; }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private LuaASTNodeOrString DeserializeInternal<TSymbol>(ref JsonReader<char> reader) where TSymbol : struct
+        protected LuaASTNodeOrString DeserializeInternal<TSymbol>(ref JsonReader<char> reader) where TSymbol : struct
         {
             var result = new LuaASTNodeOrString();
 
@@ -629,7 +535,7 @@ namespace Jass2Lua
         public object Arguments { get; set; }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private LuaASTNodeOrListLuaASTNode DeserializeInternal<TSymbol>(ref JsonReader<char> reader) where TSymbol : struct
+        protected LuaASTNodeOrListLuaASTNode DeserializeInternal<TSymbol>(ref JsonReader<char> reader) where TSymbol : struct
         {
             var result = new LuaASTNodeOrListLuaASTNode();
 
